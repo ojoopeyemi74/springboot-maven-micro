@@ -1,62 +1,76 @@
-pipeline{
+pipeline {
+    agent any
+
+    tools {
+        maven "maven"
+    }
+
     environment {
-    account = "${environment}" 
-    eks_cluster_name = "eks-${account}" 
-    artifacts_dir = "${env.WORKSPACE}/artifacts"
-    aws_region = "${params.aws_region}"
-    job_root_dir="${env.WORKSPACE}"
+        registry = '772745136297.dkr.ecr.eu-west-2.amazonaws.com/hellodatarepo'
+        registryCredential = 'jenkins-ecr-login-credentials'
+        dockerImage = ''
     }
-    tools { 
-        maven 'maven-3.8.1' 
-       
-    }
-    agent {
-        label 'master'
+
+    stages {
+        stage("Checkout from GitHub") {
+            steps {
+                git branch: 'master', url: 'https://github.com/ojoopeyemi74/springboot-maven-micro.git'
+            }
         }
-        stages{
-            stage('Initialize workspace') {
-        steps {
-        // Make sure the directory is clean
-        dir("${artifacts_dir}") {
-            deleteDir()
+
+        stage("Clean and Test") {
+            steps {
+                sh 'mvn clean test'
+            }
         }
-        sh(script: "mkdir -p ${artifacts_dir}", label: 'Create artifacts directory')
+
+        stage("Maven Package") {
+            steps {
+                sh 'mvn package'
+            }
         }
-    }
-            stage('git stage'){
-                steps{
-                    git branch: 'main', url: 'https://github.com/cloudtechmasters/springboot-maven-course-micro-svc.git'
+
+        stage("SonarQube Analysis") {
+            steps {
+                withSonarQubeEnv(installationName: 'SonarQube', credentialsId: 'jenkins-sonar-token') {
+                    sh 'mvn sonar:sonar'
                 }
             }
-            stage('build maven project '){
-                steps{
-                   sh 'mvn clean package'
+        }
+
+        stage("Quality Gate") {
+            steps {
+                timeout(time: 2, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
                 }
             }
-		stage('Generate kubeconfig for the cluster') {
-        steps {
-        script {
-            env.KUBECONFIG = "${artifacts_dir}/${eks_cluster_name}-kubeconfig"
-            sh 'chmod +x ${WORKSPACE}/generate_kubeconfig_eks.sh'
         }
-        sh(script: '${WORKSPACE}/generate_kubeconfig_eks.sh', label: 'Generate kubeconfig file')
+
+        stage('Build Image') {
+            steps {
+                script {
+                    dockerImage = docker.build("${registry}:${BUILD_NUMBER}")
+                }
+            }
+        }
+
+        stage('Push Image to Registry') {
+            steps {
+                script {
+                    docker.withRegistry("http://${registry}", "ecr:eu-west-2:${registryCredential}") {
+                        dockerImage.push()
+                    }
+                }
+            }
         }
     }
-    
-    stage('Get the cluster details') {
-        steps {
-        script {
-            sh '''kubectl apply -f deployment.yml 
-                  kubectl apply -f service.yml
-                  kubectl get all
-                '''
-        }
-        }
-    }
-        }
+
     post {
-	    cleanup {
-	          cleanWs(cleanWhenFailure: false)
-	    }
+        success {
+            mail bcc: '', body: 'Pipeline build successfully', cc: '', from: 'ojo.opeyemi747474@gmail.com', replyTo: '', subject: 'The pipeline is successful', to: 'ojo.opeyemi747474@gmail.com'
+        }
+        failure {
+            mail bcc: '', body: 'Pipeline build failed', cc: '', from: 'ojo.opeyemi747474@gmail.com', replyTo: '', subject: 'The pipeline failed', to: 'ojo.opeyemi747474@gmail.com'
+        }
     }
 }
