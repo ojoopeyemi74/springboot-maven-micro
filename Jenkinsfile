@@ -56,7 +56,7 @@ pipeline {
                     [
                         [artifactId: 'spring-boot-starter-parent', 
                         classifier: '',
-                        file: '/var/lib/jenkins/workspace/CI-pipeline/target/springboot-maven-course-micro-svc-6.0.1-SNAPSHOT.jar', 
+                        file: '/var/lib/jenkins/workspace/CI-pipeline/target/springboot-maven-course-micro-svc-7.0.1-SNAPSHOT.jar', 
                         type: 'jar'
                         ]
                     ],
